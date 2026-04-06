@@ -3,20 +3,22 @@ import json
 import requests
 from openai import OpenAI
 
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api-inference.huggingface.co/v1/")
+MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+HF_TOKEN = os.getenv("HF_TOKEN")
+LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
+
 ENV_URL = "http://localhost:8000"
 NUM_EPISODES = 3
-MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 
 def main():
-    # Read the token from 'HF_TOKEN' environment variable instead of hardcoding to pass HF security scans.
-    api_key = os.environ.get("HF_TOKEN")
-    if not api_key:
-        print("Warning: API key environment variable not set.")
+    if not HF_TOKEN:
+        print("Warning: HF_TOKEN environment variable not set.")
         return
 
     client = OpenAI(
-        base_url="https://api-inference.huggingface.co/v1/",
-        api_key=api_key
+        base_url=API_BASE_URL,
+        api_key=HF_TOKEN
     )
 
     total_score = 0.0
@@ -26,7 +28,7 @@ def main():
     print("-" * 40)
 
     for episode in range(1, NUM_EPISODES + 1):
-        print(f"\n--- Episode {episode} ---")
+        print("START")
         
         try:
             res = requests.post(f"{ENV_URL}/reset")
@@ -88,6 +90,7 @@ Rules:
                 reward = step_data["reward"]
                 done = step_data["done"]
                 
+                print("STEP")
                 print(f"Turn {obs['turn_number'] - 1} | Action: {action_dict} | Step Reward: {reward:.4f}")
                 
                 if done:
@@ -110,6 +113,7 @@ Rules:
                 else:
                     break
         
+        print("END")
         print(f"Episode {episode} Final Score (Reward): {episode_reward:.4f}")
         total_score += episode_reward
 
