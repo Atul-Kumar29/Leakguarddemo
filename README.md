@@ -1,4 +1,14 @@
-#  LeakGuard AI Simulator
+---
+title: LeakGuard AI
+emoji: 🛡️
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 8000
+pinned: false
+---
+
+# LeakGuard AI Simulator
 
 An end-to-end supply-chain anomaly detection environment built on the Meta PyTorch OpenEnv framework.
 
