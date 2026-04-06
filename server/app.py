@@ -1,3 +1,4 @@
+import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from server.environment import LeakGuardEnvironment
@@ -28,3 +29,9 @@ def step_env(action: LeakGuardAction):
 @app.get("/state")
 def get_state():
     return env.state.model_dump()
+
+def main():
+    uvicorn.run("server.app:app", host="0.0.0.0", port=8000)
+
+if __name__ == "__main__":
+    main()
