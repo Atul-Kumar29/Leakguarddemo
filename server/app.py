@@ -1,9 +1,14 @@
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from server.environment import LeakGuardEnvironment
 from server.models import LeakGuardAction
 
 app = FastAPI(title="LeakGuard AI Environment")
 env = LeakGuardEnvironment()
+
+@app.get("/")
+def read_root():
+    return RedirectResponse(url="/docs")
 
 @app.post("/reset")
 def reset_env():
