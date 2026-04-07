@@ -76,6 +76,6 @@ class LeakGuardEnvironment(Environment):
         
         if done:
             final_reward = max(0.0, (self.state.trust_score / 100.0) - min(1.0, self.state.leaked_revenue / 15000.0))
-            reward = final_reward
+            reward = max(0.0001, min(0.9999, final_reward))
 
         return self._get_observation().model_dump(), reward, done, {}
