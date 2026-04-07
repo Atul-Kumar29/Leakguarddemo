@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import requests
 from openai import OpenAI
@@ -13,33 +14,30 @@ NUM_EPISODES = 3
 
 def main():
     if not HF_TOKEN:
-        print("Warning: HF_TOKEN environment variable not set.")
-        return
+        print("Warning: HF_TOKEN environment variable not set. Using dummy token.", file=sys.stderr)
 
     client = OpenAI(
         base_url=API_BASE_URL,
-        api_key=HF_TOKEN
+        api_key=HF_TOKEN or "dummy"
     )
 
     total_score = 0.0
 
-    print(f"Starting Evaluation using model: {MODEL_NAME}")
-    print(f"Target Environment URL: {ENV_URL}")
-    print("-" * 40)
-
     for episode in range(1, NUM_EPISODES + 1):
-        print("START")
+        task_name = "LeakGuard"
+        print(f"[START] task={task_name}", flush=True)
         
         try:
             res = requests.post(f"{ENV_URL}/reset")
             res.raise_for_status()
             obs = res.json()["observation"]
         except requests.exceptions.RequestException as e:
-            print(f"Error connecting to environment... is the server running? {e}")
+            print(f"Error connecting to environment... is the server running? {e}", file=sys.stderr)
             return
             
         done = False
         episode_reward = 0.0
+        step_counter = 0
 
         while not done:
             system_prompt = """You are a virtual auditor receiving a stream of incoming vendor invoices.
@@ -90,37 +88,38 @@ Rules:
                 reward = step_data["reward"]
                 done = step_data["done"]
                 
-                print("STEP")
-                print(f"Turn {obs['turn_number'] - 1} | Action: {action_dict} | Step Reward: {reward:.4f}")
+                step_counter += 1
+                print(f"[STEP] step={step_counter} reward={reward:.4f}", flush=True)
                 
                 if done:
                     episode_reward = reward
                     
             except Exception as e:
-                print(f"Error during interaction: {e}")
+                print(f"Error during interaction: {e}", file=sys.stderr)
                 if obs["pending_invoices"]:
                     fallback_action = {
                         "invoice_id": obs["pending_invoices"][0]["id"],
                         "decision": "APPROVE"
                     }
-                    print(f"Falling back to action: {fallback_action}")
+                    print(f"Falling back to action: {fallback_action}", file=sys.stderr)
                     step_res = requests.post(f"{ENV_URL}/step", json=fallback_action)
                     step_data = step_res.json()
                     obs = step_data["observation"]
+                    
+                    step_reward = step_data.get("reward", 0.0)
+                    step_counter += 1
+                    print(f"[STEP] step={step_counter} reward={step_reward:.4f}", flush=True)
+                    
                     done = step_data["done"]
                     if done:
                         episode_reward = step_data["reward"]
                 else:
                     break
         
-        print("END")
-        print(f"Episode {episode} Final Score (Reward): {episode_reward:.4f}")
+        print(f"[END] task={task_name} score={episode_reward:.4f} steps={step_counter}", flush=True)
         total_score += episode_reward
 
     avg_score = total_score / NUM_EPISODES
-    print("\n" + "=" * 40)
-    print(f"Reproducible Baseline Score (Average over {NUM_EPISODES} episodes): {avg_score:.4f}")
-    print("=" * 40)
 
 if __name__ == "__main__":
     main()
