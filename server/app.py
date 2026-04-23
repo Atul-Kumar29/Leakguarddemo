@@ -1,3 +1,4 @@
+# server/app.py
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
@@ -18,7 +19,7 @@ def reset_env():
 
 @app.post("/step")
 def step_env(action: LeakGuardAction):
-    obs, reward, done, info = env.step(action.model_dump())
+    obs, reward, done, info = env.step(action.model_dump(exclude_none=True))
     return {
         "observation": obs,
         "reward": reward,
