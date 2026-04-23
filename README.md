@@ -1,11 +1,12 @@
 ---
-title: LeakGuard AI
-emoji: 🛡️
-colorFrom: blue
-colorTo: indigo
+title: LGDemo
+emoji: 🚀
+colorFrom: purple
+colorTo: gray
 sdk: docker
-app_port: 8000
+app_port: 7860
 pinned: false
+license: apache-2.0
 ---
 
 # LeakGuard AI Simulator
