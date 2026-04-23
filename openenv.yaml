@@ -1,1 +1,2 @@
 app: server.app:app
+port: 7860
