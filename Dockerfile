@@ -8,18 +8,15 @@ ENV HOME=/home/user \
 
 WORKDIR $HOME/app
 
-# Install uv locally
-RUN pip install --no-cache-dir --user uv
-
-# Copy files
+# Copy files first and ensure 'user' owns them
 COPY --chown=user . $HOME/app
 
-# Add the --system flag. 
-# Because we are 'user', uv will now safely install to /home/user/.local/lib/
-RUN uv pip install --system --no-cache -e .
+# Install dependencies using standard pip with the --user flag
+# This forces installation into /home/user/.local/ where permissions are guaranteed
+RUN pip install --no-cache-dir --user -e .
 
-# Port for Hugging Face
+# Hugging Face Spaces listen on port 7860
 EXPOSE 7860
 
-# Run uvicorn
+# Start the server
 CMD ["uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "7860"]
