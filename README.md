@@ -15,6 +15,9 @@ An end-to-end supply-chain anomaly detection environment and trained Reinforceme
 
 **Trained Model Weights (LoRA):** [AtulK29/LeakGuard-RL-Auditor](https://huggingface.co/AtulK29/LeakGuard-RL-Auditor)
 **Live Environment API:** [AtulK29/LGDemo](https://huggingface.co/spaces/AtulK29/LGDemo)
+**Github Repository:** [https://github.com/Atul-Kumar29/Leakguarddemo](https://github.com/Atul-Kumar29/Leakguarddemo) 
+**Google Colab Notebook:** [LeakGuardEnvironmentDemo](https://colab.research.google.com/drive/1NUuyY5bZZiAqSfbsZmqDdICZbcAWZ-U1?usp=sharing) 
+
 
 ## 📌 Overview
 LeakGuard AI tackles revenue leakage within the Procure-to-Pay cycle. This repository contains both the **OpenEnv Simulation Engine** and our custom-trained **RL Agent (Virtual Auditor)**, trained via GRPO (Group Relative Policy Optimization). 
@@ -37,7 +40,7 @@ The agent responds with a strict JSON format. It can take one of the following a
 *Note: Investigative actions (Search/Query) incur a minor token penalty to encourage efficiency.*
 
 ### State Observation
-The agent parses dense state information formatting, tracking the Turn, Trust Score, Leaked Revenue, Compliance Rules, and current Pending Invoices.
+The agent parses dense state information formatting. The environment provides the observation to the agent as a pre-formatted **Markdown table**, tracking the Turn, Trust Score, Leaked Revenue, Compliance Rules, and current Pending Invoices.
 
 ---
 
@@ -56,14 +59,12 @@ Final scores are normalized between `0.0` and `1.0`.
 
 ## 🚀 Evaluation & Usage Guide for Judges
 
-We have provided a fully automated headless inference script that connects our trained Hugging Face model to the OpenEnv API.
-
-### 1. Automated Evaluation (Recommended)
-This script pulls our trained LoRA adapter from Hugging Face, initializes the base model, and runs a full 3-episode evaluation against the live environment.
+### 1. Automated Remote Evaluation (Recommended)
+This script pulls our trained LoRA adapter from Hugging Face, initializes the base model, and runs a full evaluation against the live Hugging Face environment.
 
 ```bash
 # 1. Install required dependencies
-pip install torch transformers peft accelerate requests
+pip install torch transformers peft accelerate requests openai
 
 # 2. Run the evaluation script
 python inference.py
@@ -72,34 +73,33 @@ python inference.py
 The script handles state formatting, API communication, and outputs the step-by-step reasoning and final normalized score.
 
 ### 2. Manual API Testing
-If you are integrating our environment into a custom grading pipeline, the environment expects a specific JSON payload structured for supply chain observations.
+If you are integrating our environment into a custom grading pipeline, note that our environment returns observations as Markdown Strings, explicitly formatted for LLM consumption.
 
-Endpoint: POST https://atulk29-lgdemo.hf.space/step
-
-Required Payload Format:
-```json
+1. Reset Environment:
+POST https://atulk29-lgdemo.hf.space/reset
+```JSON
 {
-  "observation": {
-    "turn": 1,
-    "trust_score": 75,
-    "leaked_revenue": 1250,
-    "rules": "GRN_MATCH_REQUIRED",
-    "invoice_id": "INV-092",
-    "vendor": "GlobalLogistics",
-    "item": "Fuel Surcharge",
-    "amount": 4200,
-    "grn_status": "MISSING"
-  }
+  "observation": "**Turn:** 0 / 20\n**Trust Score:** 100.0% | **Leaked Revenue:** $0.00\n**Compliance Rules:** Standard variance allowed: 2%. Flag severe discrepancies.\n\n| ID | Vendor | Item | Amount | GRN Match |\n|---|---|---|---|---|\n| 1 | VEND_104 | Cloud_Storage_TB | $56.97 | False |"
+}
+
+```
+2. Take Action (Step):
+POST https://atulk29-lgdemo.hf.space/step
+
+Request Payload:
+```JSON
+{
+  "invoice_id": 1,
+  "decision": "FLAG_FOR_AUDIT"
 }
 ```
 Response Format:
 The API will return the environment's state transition, reward, and the agent's action.
 ```json
 {
-  "observation": "...",
-  "reward": -0.2,
-  "done": false,
-  "action_output": "{\"decision\": \"FLAG_FOR_AUDIT\", \"invoice_id\": 105}"
+  "observation": "**Turn:** 1 / 20\n...",
+  "reward": 0.3,
+  "done": false
 }
 ```
 ### 3. Running the Environment Locally
