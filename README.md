@@ -15,7 +15,7 @@ An end-to-end supply-chain anomaly detection environment and trained Reinforceme
 
 **Trained Model Weights (LoRA):** [AtulK29/LeakGuard-RL-Auditor](https://huggingface.co/AtulK29/LeakGuard-RL-Auditor)
 **Live Environment API:** [AtulK29/LGDemo](https://huggingface.co/spaces/AtulK29/LGDemo)
-**Github Repository:** [https://github.com/Atul-Kumar29/Leakguarddemo](https://github.com/Atul-Kumar29/Leakguarddemo) 
+**Github Repository:** [Leakguarddemo](https://github.com/Atul-Kumar29/Leakguarddemo) 
 **Google Colab Notebook:** [LeakGuardEnvironmentDemo](https://colab.research.google.com/drive/1NUuyY5bZZiAqSfbsZmqDdICZbcAWZ-U1?usp=sharing) 
 
 
