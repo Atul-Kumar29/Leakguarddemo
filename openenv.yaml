@@ -1,2 +1,14 @@
-app: server.app:app
+name: "LeakGuard-RL-Auditor"
+version: "1.0"
+description: "Supply chain anomaly detection RL agent."
+app: "server.app:app"
 port: 7860
+
+observation_space:
+  type: "string"
+
+action_space:
+  type: "dict"
+  schema:
+    invoice_id: "integer"
+    decision: "string"
