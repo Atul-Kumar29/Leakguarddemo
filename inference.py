@@ -3,25 +3,26 @@ import os
 import sys
 import json
 import requests
-from openai import OpenAI
+import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from peft import PeftModel
 
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-7B-Instruct")
-HF_TOKEN = os.getenv("HF_TOKEN")
-LOCAL_IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
-
-ENV_URL = "http://localhost:8000"
+ENV_URL = os.getenv("ENV_URL", "https://atulk29-lgdemo.hf.space")
 NUM_EPISODES = 3
 
+BASE_MODEL = "Qwen/Qwen2.5-7B-Instruct" 
+ADAPTER_REPO = "AtulK29/LeakGuard-RL-Auditor"
+
 def main():
-    if not HF_TOKEN:
-        print("Warning: HF_TOKEN environment variable not set. Using dummy token.", file=sys.stderr)
-
-    client = OpenAI(
-        base_url=API_BASE_URL,
-        api_key=HF_TOKEN or "dummy"
+    print(f"Loading trained model {ADAPTER_REPO}...", file=sys.stderr)
+    tokenizer = AutoTokenizer.from_pretrained(ADAPTER_REPO)
+    base_model = AutoModelForCausalLM.from_pretrained(
+        BASE_MODEL, 
+        torch_dtype=torch.bfloat16, 
+        device_map="auto"
     )
-
+    model = PeftModel.from_pretrained(base_model, ADAPTER_REPO)
+    
     total_score = 0.0
 
     for episode in range(1, NUM_EPISODES + 1):
@@ -33,7 +34,7 @@ def main():
             res.raise_for_status()
             obs = res.json()["observation"]
         except requests.exceptions.RequestException as e:
-            print(f"Error connecting to environment... is the server running? {e}", file=sys.stderr)
+            print(f"Error connecting to environment... {e}", file=sys.stderr)
             return
 
         done = False
@@ -48,28 +49,22 @@ You have an expanded action space. You must output a raw JSON object (without ma
 
 Valid Actions:
 1. Standard Audit: {"invoice_id": <int>, "decision": "<APPROVE|FLAG_FOR_AUDIT|REJECT>"}
-2. Negotiate: {"invoice_id": <int>, "decision": "NEGOTIATE", "discount_pct": <float>} (Max 0.20 discount)
+2. Negotiate: {"invoice_id": <int>, "decision": "NEGOTIATE", "discount_pct": <float>}
 3. Search Web: {"decision": "SEARCH_WEB", "item_name": "<string>"}
-4. Query History: {"decision": "QUERY_HISTORY", "vendor_id": "<string>"}
-
-Rules:
-- Analyze the observation table carefully. Ensure you adapt to any updated Compliance Rules.
-- Use SEARCH_WEB and QUERY_HISTORY to investigate discrepancies, but they incur a small token penalty (-0.01).
-- To process an invoice, use APPROVE, FLAG_FOR_AUDIT, REJECT, or NEGOTIATE."""
+4. Query History: {"decision": "QUERY_HISTORY", "vendor_id": "<string>"}"""
 
             user_prompt = f"Current Observation:\n{obs}\n\nPlease provide your action as a JSON object."
+            prompt = f"### System:\n{system_prompt}\n\n### User:\n{user_prompt}\n\n### Response:\n"
 
             try:
-                response = client.chat.completions.create(
-                    model=MODEL_NAME,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    temperature=0.0
-                )
+                inputs = tokenizer([prompt], return_tensors="pt").to("cuda" if torch.cuda.is_available() else "cpu")
+                
+                with torch.no_grad():
+                    outputs = model.generate(**inputs, max_new_tokens=128, temperature=0.1)
+                
+                input_length = inputs["input_ids"].shape[1]
+                action_text = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True).strip()
 
-                action_text = response.choices[0].message.content.strip()
                 if action_text.startswith("```json"):
                     action_text = action_text[7:-3].strip()
                 elif action_text.startswith("```"):
@@ -93,36 +88,13 @@ Rules:
 
             except Exception as e:
                 print(f"Error during interaction: {e}", file=sys.stderr)
-                
-                invoice_id_fallback = 1
-                if "ID | Vendor" in obs:
-                    try:
-                        lines = obs.split("\n")
-                        for line in lines:
-                            if line.startswith("|") and not line.startswith("| ID") and not line.startswith("|---"):
-                                parts = line.split("|")
-                                if len(parts) > 1:
-                                    invoice_id_fallback = int(parts[1].strip())
-                                    break
-                    except:
-                        pass
-                        
-                fallback_action = {
-                    "invoice_id": invoice_id_fallback,
-                    "decision": "APPROVE"
-                }
-                print(f"Falling back to action: {fallback_action}", file=sys.stderr)
+                fallback_action = {"invoice_id": 1, "decision": "APPROVE"}
                 step_res = requests.post(f"{ENV_URL}/step", json=fallback_action)
                 step_data = step_res.json()
                 obs = step_data["observation"]
-
-                step_reward = step_data.get("reward", 0.0)
-                step_counter += 1
-                print(f"[STEP] step={step_counter} reward={step_reward:.4f} (fallback)", flush=True)
-
                 done = step_data["done"]
                 if done:
-                    episode_reward = step_data["reward"]
+                    episode_reward = step_data.get("reward", 0.0)
 
         print(f"[END] task={task_name} episode={episode} score={episode_reward:.4f} steps={step_counter}", flush=True)
         total_score += episode_reward

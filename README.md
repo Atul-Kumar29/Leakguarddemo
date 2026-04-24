@@ -9,77 +9,106 @@ pinned: false
 license: apache-2.0
 ---
 
-# LeakGuard AI Simulator
+# 🛡️ LeakGuard AI: RL Auditor
 
-An end-to-end supply-chain anomaly detection environment built on the Meta PyTorch OpenEnv framework.
+An end-to-end supply-chain anomaly detection environment and trained Reinforcement Learning (RL) agent, built on the Meta PyTorch OpenEnv framework.
 
-**Deployed on Hugging Face Spaces**: [AtulK29/LeakGuardAI](https://huggingface.co/spaces/AtulK29/LeakGuardAI)
+**Trained Model Weights (LoRA):** [AtulK29/LeakGuard-RL-Auditor](https://huggingface.co/AtulK29/LeakGuard-RL-Auditor)
+**Live Environment API:** [AtulK29/LGDemo](https://huggingface.co/spaces/AtulK29/LGDemo)
 
-##  Overview
-LeakGuard AI acts as a simulation engine designed to prevent revenue leakage within a typical Procure-to-Pay cycle. In this environment, your Reinforcement Learning (RL) agent acts as a **Virtual Auditor** whose job is to carefully process a continuous stream of incoming vendor invoices.
+## 📌 Overview
+LeakGuard AI tackles revenue leakage within the Procure-to-Pay cycle. This repository contains both the **OpenEnv Simulation Engine** and our custom-trained **RL Agent (Virtual Auditor)**, trained via GRPO (Group Relative Policy Optimization). 
 
-The core challenge? You must balance **preventing financial loss** (leaked revenue from invalid invoices) while **maintaining supply chain velocity** (represented through a Vendor Trust Score).
+The agent's objective is to balance **preventing financial loss** (catching missing GRNs/fraud) with **maintaining supply chain velocity** (Vendor Trust Score).
 
-## The Environment
+---
 
-The environment runs as a standard `OpenEnv` OpenAPI server, providing endpoints for standard RL workflows (`/reset`, `/step`, `/state`).
+## 🧠 The RL Agent (Our Submission)
 
-An episode lasts a maximum of **15 turns**. During each turn, the environment dynamically generates between 1 and 3 simulated invoices. 
+We trained a LoRA adapter on top of `Qwen/Qwen2.5-7B-Instruct` using Unsloth. The agent is trained to operate in a multi-agent framework with an advanced action space, allowing it to perform investigative tasks before making financial decisions.
 
-### Observation Space
-At each turn, the RL Agent (Auditor) receives:
-- **`turn_number`**: Current turn tracked.
-- **`pending_invoices`**: An array of `Invoice` objects containing:
-  - `id`: Internal Invoice ID.
-  - `vendor_id`: Abstracted string representing a specific vendor.
-  - `amount`: Financial value of the invoice ranging from $500 to $5000.
-  - `grn_match`: Boolean identifying whether physical goods matched the invoice. This represents ground truth reality `(True = Valid, False = Leakage/Discrepancy)`.
-- **`total_revenue_leaked`**: Cumulative financial loss thus far.
-- **`vendor_trust_score`**: Trust velocity metric bounded between 0 and 100.
+### Expanded Action Space
+The agent responds with a strict JSON format. It can take one of the following actions per turn:
+1. **Standard Audit:** `{"invoice_id": <int>, "decision": "<APPROVE|FLAG_FOR_AUDIT|REJECT>"}`
+2. **Negotiate:** `{"invoice_id": <int>, "decision": "NEGOTIATE", "discount_pct": <float>}` *(Max 0.20)*
+3. **Search Web:** `{"decision": "SEARCH_WEB", "item_name": "<string>"}`
+4. **Query History:** `{"decision": "QUERY_HISTORY", "vendor_id": "<string>"}`
 
-### Action Space
-The agent replies with a strict JSON format dictating its action for exactly **one** invoice at a time:
+*Note: Investigative actions (Search/Query) incur a minor token penalty to encourage efficiency.*
+
+### State Observation
+The agent parses dense state information formatting, tracking the Turn, Trust Score, Leaked Revenue, Compliance Rules, and current Pending Invoices.
+
+---
+
+## ⚙️ The Environment & Reward Mechanics
+
+The environment runs as a standard `OpenEnv` FastAPI server, providing endpoints for standard RL workflows (`/reset`, `/step`). 
+
+Reward signals force the model to balance aggression and trust:
+- **APPROVE:** +Reward for valid invoices; -Reward and revenue leak if GRN is missing.
+- **FLAG_FOR_AUDIT:** +Reward for catching leaks; Heavy Trust penalty if used on a valid trusted vendor.
+- **NEGOTIATE / REJECT:** Dynamic trust and financial adjustments based on historical context and current compliance rules.
+
+Final scores are normalized between `0.0` and `1.0`.
+
+---
+
+## 🚀 Evaluation & Usage Guide for Judges
+
+We have provided a fully automated headless inference script that connects our trained Hugging Face model to the OpenEnv API.
+
+### 1. Automated Evaluation (Recommended)
+This script pulls our trained LoRA adapter from Hugging Face, initializes the base model, and runs a full 3-episode evaluation against the live environment.
+
+```bash
+# 1. Install required dependencies
+pip install torch transformers peft accelerate requests
+
+# 2. Run the evaluation script
+python inference.py
+```
+
+The script handles state formatting, API communication, and outputs the step-by-step reasoning and final normalized score.
+
+### 2. Manual API Testing
+If you are integrating our environment into a custom grading pipeline, the environment expects a specific JSON payload structured for supply chain observations.
+
+Endpoint: POST https://atulk29-lgdemo.hf.space/step
+
+Required Payload Format:
 ```json
 {
-  "invoice_id": 105,
-  "decision": "APPROVE" // OR "FLAG_FOR_AUDIT" OR "REJECT"
+  "observation": {
+    "turn": 1,
+    "trust_score": 75,
+    "leaked_revenue": 1250,
+    "rules": "GRN_MATCH_REQUIRED",
+    "invoice_id": "INV-092",
+    "vendor": "GlobalLogistics",
+    "item": "Fuel Surcharge",
+    "amount": 4200,
+    "grn_status": "MISSING"
+  }
 }
 ```
-
-### Reward Mechanics
-The internal rules engine distributes scalar reward signals and modifies state variables strictly based on the agent's action and the underlying truth of the `grn_match`:
-
-- **APPROVE**:
-  - If `grn_match=True`: Valid approval. Gain +2.0 `trust_score`.
-  - If `grn_match=False`: Overlooked leak. Suffer a -0.2 penalty on `reward` and immediately leak the invoice `amount`.
-- **FLAG_FOR_AUDIT**:
-  - If `grn_match=False`: Safe recovery! Gain +0.3 `reward`.
-  - If `grn_match=True`: Vendor gets annoyed by the delay. Penalty of -5.0 `trust_score`.
-- **REJECT**:
-  - If `grn_match=False`: Valid strictness, but burns relationship. Suffer a -2.0 `trust_score` penalty for outright rejection.
-  - If `grn_match=True`: Vendor gets furious. Catastrophic -15.0 `trust_score` penalty!
-
-**Final Reward Mapping:** At the end of 15 turns, the system aggregates the health of the supply chain and normalizes it to a final score strictly constrained between `0.0` and `1.0`:
-> `Final Reward = max(0.0, (trust_score / 100.0) - min(1.0, leaked_revenue / 15000.0))`
-
-##  Usage Guide
-
-### Running via Hugging Face Access
-To evaluate against the cloud-deployed Hugging Face space remotely, simply update the `ENV_URL` in our provided evaluation script to point to your Space's URL instead of localhost:
-
-1. Clone this repository locally.
-2. Edit `inference.py` and replace `ENV_URL = "http://localhost:8000"` with `ENV_URL = "https://your-username-leakguard-ai.hf.space"`.
-3. Provide your Hugging Face API key as an environment variable and evaluate using Qwen/Qwen2.5!
-
-```bash
-# Example
-uv run python inference.py
+Response Format:
+The API will return the environment's state transition, reward, and the agent's action.
+```json
+{
+  "observation": "...",
+  "reward": -0.2,
+  "done": false,
+  "action_output": "{\"decision\": \"FLAG_FOR_AUDIT\", \"invoice_id\": 105}"
+}
 ```
-
-### Running Locally
-To launch the FastAPI server locally for validation:
+### 3. Running the Environment Locally
+If you wish to run the OpenEnv simulation engine on your local machine instead of querying the Hugging Face Space:
 ```bash
-uv pip install -e .
-uv run uvicorn server.app:app --host 0.0.0.0 --port 8000
+# 1. Install the environment package
+pip install -e .
+
+# 2. Launch the FastAPI server locally
+uvicorn server.app:app --host 0.0.0.0 --port 8000
 ```
-Then navigate to `http://127.0.0.1:8000/docs` to interact manually via the Swagger Dashboard.
+You can then navigate to http://127.0.0.1:8000/docs to interact manually via the Swagger Dashboard.
