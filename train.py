@@ -1,9 +1,9 @@
-# 1. Pydantic Safety Patch - MUST be at the very top
+# 1. Pydantic Safety Patch - MUST be at the very top to stop the Tensor crash
 import pydantic
 from pydantic import ConfigDict
 pydantic.BaseModel.model_config = ConfigDict(arbitrary_types_allowed=True)
 
-# 2. Unsloth Import - MUST be before trl/transformers to avoid warnings
+# 2. Unsloth Import - MUST be before trl/transformers to fix optimizations
 from unsloth import FastLanguageModel
 
 import os
@@ -18,7 +18,7 @@ from trl import GRPOConfig, GRPOTrainer
 sys.path.append(os.getcwd())
 from server.environment import LeakGuardEnvironment
 
-# 4. Model Initialization
+# 4. Model Initialization (4-bit for T4 GPU efficiency)
 model, tokenizer = FastLanguageModel.from_pretrained(
     model_name = "Qwen/Qwen2.5-7B-Instruct", 
     max_seq_length = 512,
@@ -32,8 +32,10 @@ env = LeakGuardEnvironment()
 def reward_logic(completions, **kwargs):
     rewards = []
     for content in completions:
+        # Extract content text
         text = content[0]['content'] if isinstance(content, list) else content
         try:
+            # Regex to find the JSON action block
             match = re.search(r'\{.*\}', text, re.DOTALL)
             if not match:
                 rewards.append(-1.0)
@@ -42,13 +44,15 @@ def reward_logic(completions, **kwargs):
             action = json.loads(match.group(0))
             _, reward, done, _ = env.step(action)
             
+            # Reset environment if the episode ended
             if done: env.reset()
             rewards.append(float(reward))
         except Exception:
+            # Penalize invalid JSON or environment errors
             rewards.append(-1.0)
     return rewards
 
-# 6. Dataset Generation (250 Steps)
+# 6. Dataset Preparation (250 Loops)
 obs = env.reset()
 system_prompt = "You are a virtual auditor managing a multi-agent supply chain. Output raw JSON only."
 
@@ -62,7 +66,7 @@ for _ in range(250):
     
 dataset = Dataset.from_dict({"prompt": prompts})
 
-# 7. GRPO Configuration
+# 7. GRPO Training Config
 training_args = GRPOConfig(
     output_dir = "LeakGuard-RL-Auditor",
     learning_rate = 5e-6,
@@ -75,7 +79,8 @@ training_args = GRPOConfig(
     max_completion_length = 128,   
 )
 
-# 8. Training Execution
+# 8. Trainer Initialization
+# Note: PatchFastRL call is removed because Unsloth handles it on import
 trainer = GRPOTrainer(
     model = model,
     reward_funcs = [reward_logic],
@@ -86,14 +91,14 @@ trainer = GRPOTrainer(
 print("🚀 Starting LeakGuard RL Training (250 Steps)...")
 trainer.train()
 
-# 9. Push to NEW Repository for HF Jobs
+# 9. Push to a NEW Repository for HF Jobs
 NEW_MODEL_ID = "AtulK29/LeakGuard-RL-Final"
 
-print(f"📦 Uploading to NEW repo: {NEW_MODEL_ID}")
+print(f"📦 Uploading trained weights to {NEW_MODEL_ID}...")
 model.push_to_hub_merged(
     NEW_MODEL_ID, 
     tokenizer, 
     save_method = "lora", 
     token = os.getenv("HF_TOKEN")
 )
-print("✅ SUCCESS: Model is live.")
+print("✅ SUCCESS: Training complete and model uploaded.")
