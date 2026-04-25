@@ -18,8 +18,7 @@ from trl import GRPOConfig, GRPOTrainer
 sys.path.append(os.getcwd())
 from server.environment import LeakGuardEnvironment
 
-# 4. Model Initialization
-# Using 4-bit quantization to fit comfortably in Kaggle's T4 RAM
+# 4. Model Initialization (4-bit for T4 GPU)
 model, tokenizer = FastLanguageModel.from_pretrained(
     model_name = "Qwen/Qwen2.5-7B-Instruct", 
     max_seq_length = 512,
@@ -33,10 +32,8 @@ env = LeakGuardEnvironment()
 def reward_logic(completions, **kwargs):
     rewards = []
     for content in completions:
-        # Handle different TRL output formats
         text = content[0]['content'] if isinstance(content, list) else content
         try:
-            # Extract JSON from the model's thought process
             match = re.search(r'\{.*\}', text, re.DOTALL)
             if not match:
                 rewards.append(-1.0)
@@ -45,11 +42,9 @@ def reward_logic(completions, **kwargs):
             action = json.loads(match.group(0))
             _, reward, done, _ = env.step(action)
             
-            # Reset environment for the next roll-out if done
             if done: env.reset()
             rewards.append(float(reward))
         except Exception:
-            # Penalize invalid JSON or environment crashes
             rewards.append(-1.0)
     return rewards
 
@@ -63,7 +58,6 @@ Valid Actions:
 3. Search Web: {"decision": "SEARCH_WEB", "item_name": "<string>"}
 4. Query History: {"decision": "QUERY_HISTORY", "vendor_id": "<string>"}"""
 
-# Prepare the 250-step sequence
 prompts = []
 for _ in range(250):
     user_prompt = f"Current Observation:\n{obs}\n\nPlease provide your action as a JSON object."
@@ -82,8 +76,8 @@ training_args = GRPOConfig(
     gradient_accumulation_steps = 4,
     max_steps = 250,
     logging_steps = 1,
-    fp16 = True,           # Enable mixed precision for T4 GPU
-    num_generations = 4,    # Number of completions to sample per prompt
+    fp16 = True,           
+    num_generations = 4,    
     max_completion_length = 128,   
     save_steps = 100,              
 )
@@ -100,7 +94,6 @@ print("🚀 Starting LeakGuard RL Training (250 Loops)...")
 trainer.train()
 
 # 9. Push to a NEW Repository for HF Jobs
-# Change 'AtulK29' to your verified username if needed
 NEW_MODEL_ID = "AtulK29/LeakGuard-RL-Final"
 
 print(f"📦 Uploading trained weights to {NEW_MODEL_ID}...")
