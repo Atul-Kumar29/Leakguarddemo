@@ -59,7 +59,7 @@ Valid Actions:
 4. Query History: {"decision": "QUERY_HISTORY", "vendor_id": "<string>"}"""
 
 prompts = []
-for _ in range(250):
+for _ in range(60):
     obs = env.reset()
     user_prompt = f"Current Observation:\n{obs}\n\nPlease provide your action as a JSON object."
     prompts.append([
@@ -78,7 +78,7 @@ training_args = GRPOConfig(
     learning_rate = 5e-6,
     per_device_train_batch_size = 1,
     gradient_accumulation_steps = 4,
-    max_steps = 250,
+    max_steps = 60,
     logging_steps = 1,
     
     # Hardware specific precision
