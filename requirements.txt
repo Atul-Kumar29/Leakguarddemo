@@ -1,0 +1,14 @@
+torch
+transformers
+trl
+peft
+bitsandbytes
+accelerate
+datasets
+unsloth
+huggingface_hub
+fastapi
+uvicorn
+pydantic
+requests
+openenv-core>=0.2.0

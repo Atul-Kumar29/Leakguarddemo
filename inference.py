@@ -1,4 +1,3 @@
-# inference.py
 import os
 import sys
 import json
@@ -11,17 +10,23 @@ ENV_URL = os.getenv("ENV_URL", "https://atulk29-lgdemo.hf.space")
 NUM_EPISODES = 3
 
 BASE_MODEL = "Qwen/Qwen2.5-7B-Instruct" 
-ADAPTER_REPO = "AtulK29/LeakGuard-RL-Auditor"
+HUB_ADAPTER = "AtulK29/LeakGuard-RL-Auditor"
+LOCAL_ADAPTER = "/content/drive/MyDrive/LeakGuard-RL-Auditor"
+
+IS_COLAB = "google.colab" in sys.modules
 
 def main():
-    print(f"Loading trained model {ADAPTER_REPO}...", file=sys.stderr)
-    tokenizer = AutoTokenizer.from_pretrained(ADAPTER_REPO)
+    # Detect if we should use the local Colab weights or the HF Hub weights
+    adapter_path = LOCAL_ADAPTER if (IS_COLAB and os.path.exists(LOCAL_ADAPTER)) else HUB_ADAPTER
+
+    print(f"Loading trained model adapter from {adapter_path}...", file=sys.stderr)
+    tokenizer = AutoTokenizer.from_pretrained(adapter_path)
     base_model = AutoModelForCausalLM.from_pretrained(
         BASE_MODEL, 
         torch_dtype=torch.bfloat16, 
         device_map="auto"
     )
-    model = PeftModel.from_pretrained(base_model, ADAPTER_REPO)
+    model = PeftModel.from_pretrained(base_model, adapter_path)
     
     total_score = 0.0
 
